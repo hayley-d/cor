@@ -1,7 +1,8 @@
 [package]
-name = "rs-cor"
+name = "rs-cor-example"
 version = "0.1.0"
 edition = "2024"
+publish = false
 
 [dependencies]
-cor = { path = "../cor" }
+rs-cor = { path = "../cor" }
