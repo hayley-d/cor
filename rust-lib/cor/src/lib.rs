@@ -11,26 +11,61 @@
 //! ```
 //! use cor::{Handler, chain, handler};
 //!
-//! #[handler]
-//! struct Greeting<T> {}
+//! #[derive(Clone)]
+//! struct LogRequest {
+//!    level: LogLevel,
+//!    message: String,
+//! }
+
+//! #[derive(Clone, PartialEq)]
+//! enum LogLevel {
+//!   Info,
+//!   Warning,
+//!   Error,
+//! }
 //!
 //! #[handler]
-//! struct Farewell<T> {}
+//! struct InfoHandler<T> {}
 //!
-//! let chain = chain![
-//!     |next| Greeting::new(
-//!         |req: &String| req.starts_with("hello"),
-//!         |req| println!("{}", req),
-//!         next,
-//!     ),
-//!     |next| Farewell::new(
-//!         |req: &String| req.starts_with("bye"),
-//!         |req| println!("{}", req),
-//!         next,
-//!     ),
-//! ];
+//! #[handler]
+//! struct WarningHandler<T> {}
 //!
-//! chain.handle("hello world".to_string());
+//! #[handler]
+//! struct ErrorHandler<T> {}
+//!
+//! fn main() {
+//!   let logger = chain![
+//!       |next| InfoHandler::new(
+//!           |req: &LogRequest| req.level == LogLevel::Info,
+//!           |req| println!("[INFO] {}", req.message),
+//!           next,
+//!       ),
+//!       |next| WarningHandler::new(
+//!           |req: &LogRequest| req.level == LogLevel::Warning,
+//!           |req| println!("[WARN] {}", req.message),
+//!           next,
+//!       ),
+//!       |next| ErrorHandler::new(
+//!           |req: &LogRequest| req.level == LogLevel::Error,
+//!           |req| println!("[ERROR] {}", req.message),
+//!           next,
+//!       ),
+//!   ];
+//!
+//!   logger.handle(LogRequest {
+//!       level: LogLevel::Info,
+//!       message: "Server started on port 8080".into(),
+//!   });
+//!
+//!   logger.handle(LogRequest {
+//!       level: LogLevel::Warning,
+//!       message: "Memory usage above 80%".into(),
+//!   });
+//!
+//!   logger.handle(LogRequest {
+//!       level: LogLevel::Error,
+//!       message: "Database connection lost".into(),
+//!   });
 //! ```
 //!
 //! # How it works
@@ -228,13 +263,11 @@ mod tests {
         let log = Rc::new(RefCell::new(Vec::new()));
         let log_clone = log.clone();
 
-        let chain = chain![
-            |next| TestHandler::new(
-                |req: &String| req == "match",
-                move |req| log_clone.borrow_mut().push(req.clone()),
-                next,
-            ),
-        ];
+        let chain = chain![|next| TestHandler::new(
+            |req: &String| req == "match",
+            move |req| log_clone.borrow_mut().push(req.clone()),
+            next,
+        ),];
 
         chain.handle("match".to_string());
         assert_eq!(*log.borrow(), vec!["match"]);
@@ -245,13 +278,11 @@ mod tests {
         let log = Rc::new(RefCell::new(Vec::new()));
         let log_clone = log.clone();
 
-        let chain = chain![
-            |next| TestHandler::new(
-                |req: &String| req == "match",
-                move |req| log_clone.borrow_mut().push(req.clone()),
-                next,
-            ),
-        ];
+        let chain = chain![|next| TestHandler::new(
+            |req: &String| req == "match",
+            move |req| log_clone.borrow_mut().push(req.clone()),
+            next,
+        ),];
 
         chain.handle("no match".to_string());
         assert!(log.borrow().is_empty());
@@ -350,13 +381,11 @@ mod tests {
         let log = Rc::new(RefCell::new(Vec::new()));
         let log_clone = log.clone();
 
-        let chain = chain![
-            |next| TestHandler::new(
-                |req: &i32| *req > 10,
-                move |req| log_clone.borrow_mut().push(*req),
-                next,
-            ),
-        ];
+        let chain = chain![|next| TestHandler::new(
+            |req: &i32| *req > 10,
+            move |req| log_clone.borrow_mut().push(*req),
+            next,
+        ),];
 
         chain.handle(5);
         assert!(log.borrow().is_empty());
