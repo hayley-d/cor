@@ -8,6 +8,7 @@ repository = "https://github.com/hayley-d/cor"
 license = "GPL-3.0-only"
 keywords = ["design-pattern", "handler", "middleware"]
 categories = ["rust-patterns"]
+readme = "README.md"
 
 [lib]
 name = "cor"
