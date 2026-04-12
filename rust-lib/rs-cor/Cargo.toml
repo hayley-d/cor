@@ -5,4 +5,4 @@ edition = "2024"
 publish = false
 
 [dependencies]
-rs-cor = { path = "../cor" }
+rs-cor = { version = "0.1.0", path = "../cor" }

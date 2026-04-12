@@ -4,8 +4,8 @@ version = "0.1.0"
 edition = "2024"
 authors = ["Hayley Dodkins <u21528790@tuks.co.za>"]
 description = "A compile-time Chain of Responsibility pattern library for Rust"
-repository = "https://github.com/hayley-d/chain-of-command"
-license-file = "../../LICENSE"
+repository = "https://github.com/hayley-d/cor"
+license-file = "../LICENSE"
 keywords = ["chain-of-responsibility", "design-pattern", "handler", "middleware"]
 categories = ["rust-patterns"]
 

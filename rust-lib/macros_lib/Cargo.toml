@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2024"
 authors = ["Hayley Dodkins <u21528790@tuks.co.za>"]
 description = "Proc macros for the rs-cor Chain of Responsibility library"
-repository = "https://github.com/hayley-d/chain-of-command"
+repository = "https://github.com/hayley-d/cor"
 license-file = "../../LICENSE"
 
 [lib]
