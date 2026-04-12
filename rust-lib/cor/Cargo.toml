@@ -13,4 +13,4 @@ categories = ["rust-patterns"]
 name = "cor"
 
 [dependencies]
-rs-cor-macros = { path = "../macros_lib" }
+rs-cor-macros = { version = "0.1.0", path = "../macros_lib" }
