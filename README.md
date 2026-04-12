@@ -1,1 +1,3 @@
-# chain-of-command
+# Chain of Responsibility Pattern (COR)
+
+
