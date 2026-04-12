@@ -3,22 +3,28 @@ extern crate self as cor;
 pub use macros_lib::{Handler, handler};
 
 pub trait Handler<T> {
-    fn set_next(&mut self, next: Box<dyn Handler<T>>);
     fn handle(&self, request: T);
 }
 
-#[derive(Handler)]
-pub struct BaseHandler<T> {
-    pub next: Option<Box<dyn Handler<T>>>,
+pub struct NilHandler;
+
+impl<T> Handler<T> for NilHandler {
+    fn handle(&self, _: T) {}
 }
 
-impl<T> BaseHandler<T> {
+#[derive(Handler)]
+pub struct BaseHandler<T, N: Handler<T>> {
+    pub next: N,
+    _phantom: std::marker::PhantomData<T>,
+}
+
+impl NilHandler {
     pub fn new() -> Self {
-        BaseHandler { next: None }
+        NilHandler {}
     }
 }
 
-impl<T> Default for BaseHandler<T> {
+impl Default for NilHandler {
     fn default() -> Self {
         Self::new()
     }
@@ -26,13 +32,11 @@ impl<T> Default for BaseHandler<T> {
 
 #[macro_export]
 macro_rules! chain {
-    ($head:expr $(,)?) => {
-        $head
+    ($last:expr $(,)?) => {
+        $last(::cor::NilHandler::new())
     };
+
     ($head:expr, $($rest:expr),+ $(,)?) => {{
-        let mut head = $head;
-        let tail = $crate::chain!($($rest),+);
-        $crate::Handler::set_next(&mut head, Box::new(tail));
-        head
+        $head(chain!($($rest),+))
     }};
 }

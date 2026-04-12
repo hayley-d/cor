@@ -17,17 +17,9 @@ pub fn handler_derive_impl(input: TokenStream) -> TokenStream {
     let t_param_name = &type_param.ident;
 
     let expanded = quote! {
-        impl #impl_generics ::cor::Handler<#t_param_name> for #name #ty_generics #where_clause
-        where #t_param_name: Clone
-        {
-            fn set_next(&mut self, next: Box<dyn ::cor::Handler<#t_param_name>>) {
-                self.next = Some(next);
-            }
-
+        impl #impl_generics ::cor::Handler<#t_param_name> for #name #ty_generics #where_clause {
             fn handle(&self, request: #t_param_name) {
-                if let Some(ref next) = self.next {
-                    next.handle(request);
-                }
+                self.next.handle(request);
             }
         }
     };

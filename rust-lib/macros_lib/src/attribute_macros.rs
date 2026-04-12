@@ -9,7 +9,6 @@ pub fn handler_attr_impl(_attr: TokenStream, item: TokenStream) -> TokenStream {
     let visibility = &input.vis;
     let attributes = &input.attrs;
     let generics = &input.generics;
-    let (impl_generics, type_generics, where_clause) = generics.split_for_impl();
 
     let type_parameter = generics
         .type_params()
@@ -25,39 +24,42 @@ pub fn handler_attr_impl(_attr: TokenStream, item: TokenStream) -> TokenStream {
         _ => panic!("handler attribute only works on structs"),
     };
 
-    let existing_field_tokens = existing_fields.iter().map(|f| quote! { #f });
+    // Filter out `next` field if user included it (macro manages it)
+    let existing_field_tokens: Vec<_> = existing_fields
+        .iter()
+        .filter(|f| f.ident.as_ref().map_or(true, |id| id != "next"))
+        .map(|f| quote! { #f })
+        .collect();
 
     let expanded = quote! {
         #(#attributes)*
-        #visibility struct #name #generics #where_clause {
+        #visibility struct #name<#type_t, N: ::cor::Handler<#type_t>> {
             #(#existing_field_tokens,)*
+            next: N,
             condition: Box<dyn Fn(&#type_t) -> bool>,
             on_match: Box<dyn Fn(&#type_t)>,
         }
 
-        impl #impl_generics #name #type_generics #where_clause {
+        impl<#type_t, N: ::cor::Handler<#type_t>> #name<#type_t, N> {
             pub fn new(
                 condition: impl Fn(&#type_t) -> bool + 'static,
                 on_match: impl Fn(&#type_t) + 'static,
+                next: N,
             ) -> Self {
                 Self {
-                    next: None,
+                    next,
                     condition: Box::new(condition),
                     on_match: Box::new(on_match),
                 }
             }
         }
 
-        impl #impl_generics ::cor::Handler<#type_t> for #name #type_generics #where_clause {
-            fn set_next(&mut self, next: Box<dyn ::cor::Handler<#type_t>>) {
-                self.next = Some(next);
-            }
-
+        impl<#type_t, N: ::cor::Handler<#type_t>> ::cor::Handler<#type_t> for #name<#type_t, N> {
             fn handle(&self, request: #type_t) {
                 if (self.condition)(&request) {
                     (self.on_match)(&request);
-                } else if let Some(ref next) = self.next {
-                    next.handle(request);
+                } else {
+                    self.next.handle(request);
                 }
             }
         }

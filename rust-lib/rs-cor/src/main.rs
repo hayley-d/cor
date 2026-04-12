@@ -1,23 +1,16 @@
-use cor::{BaseHandler, Handler, chain, handler};
+use cor::{Handler, chain, handler};
 
 #[handler]
-struct ConcreteHandlerA<T> {
-    next: Option<Box<dyn Handler<T>>>,
-}
+struct ConcreteHandlerA<T> {}
 
 #[handler]
-struct ConcreteHandlerB<T> {
-    next: Option<Box<dyn Handler<T>>>,
-}
+struct ConcreteHandlerB<T> {}
 
 fn main() {
-    let handler = BaseHandler::<String>::new();
-    let handler_1 =
-        ConcreteHandlerA::<String>::new(|req| req == "A", |req| println!("Handled A: {}", req));
-    let handler_2 =
-        ConcreteHandlerB::<String>::new(|req| req == "B", |req| println!("Handled B: {}", req));
-
-    let chain = chain![handler, handler_1, handler_2];
+    let chain = chain![
+        |next| ConcreteHandlerA::new(|req: &String| req == "A", |req| println!("Handled A: {}", req), next),
+        |next| ConcreteHandlerB::new(|req: &String| req == "B", |req| println!("Handled B: {}", req), next),
+    ];
 
     chain.handle("B".to_string());
 }
