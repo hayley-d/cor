@@ -1,16 +1,58 @@
 use cor::{Handler, chain, handler};
 
-#[handler]
-struct ConcreteHandlerA<T> {}
+#[derive(Clone)]
+struct LogRequest {
+    level: LogLevel,
+    message: String,
+}
+
+#[derive(Clone, PartialEq)]
+enum LogLevel {
+    Info,
+    Warning,
+    Error,
+}
 
 #[handler]
-struct ConcreteHandlerB<T> {}
+struct InfoHandler<T> {}
+
+#[handler]
+struct WarningHandler<T> {}
+
+#[handler]
+struct ErrorHandler<T> {}
 
 fn main() {
-    let chain = chain![
-        |next| ConcreteHandlerA::new(|req: &String| req == "A", |req| println!("Handled A: {}", req), next),
-        |next| ConcreteHandlerB::new(|req: &String| req == "B", |req| println!("Handled B: {}", req), next),
+    let logger = chain![
+        |next| InfoHandler::new(
+            |req: &LogRequest| req.level == LogLevel::Info,
+            |req| println!("[INFO] {}", req.message),
+            next,
+        ),
+        |next| WarningHandler::new(
+            |req: &LogRequest| req.level == LogLevel::Warning,
+            |req| println!("[WARN] {}", req.message),
+            next,
+        ),
+        |next| ErrorHandler::new(
+            |req: &LogRequest| req.level == LogLevel::Error,
+            |req| println!("[ERROR] {}", req.message),
+            next,
+        ),
     ];
 
-    chain.handle("B".to_string());
+    logger.handle(LogRequest {
+        level: LogLevel::Info,
+        message: "Server started on port 8080".into(),
+    });
+
+    logger.handle(LogRequest {
+        level: LogLevel::Warning,
+        message: "Memory usage above 80%".into(),
+    });
+
+    logger.handle(LogRequest {
+        level: LogLevel::Error,
+        message: "Database connection lost".into(),
+    });
 }
