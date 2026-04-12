@@ -6,7 +6,7 @@ authors = ["Hayley Dodkins <u21528790@tuks.co.za>"]
 description = "A compile-time Chain of Responsibility pattern library for Rust"
 repository = "https://github.com/hayley-d/cor"
 license = "GPL-3.0-only"
-keywords = ["chain-of-responsibility", "design-pattern", "handler", "middleware"]
+keywords = ["design-pattern", "handler", "middleware"]
 categories = ["rust-patterns"]
 
 [lib]
