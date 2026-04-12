@@ -66,6 +66,7 @@
 //!       level: LogLevel::Error,
 //!       message: "Database connection lost".into(),
 //!   });
+//! }
 //! ```
 //!
 //! # How it works
