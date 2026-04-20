@@ -22,21 +22,21 @@ dependencies = [
 
 [[package]]
 name = "rs-cor"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "rs-cor-macros",
 ]
 
 [[package]]
 name = "rs-cor-example"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "rs-cor",
 ]
 
 [[package]]
 name = "rs-cor-macros"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "proc-macro2",
  "quote",

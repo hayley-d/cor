@@ -1,6 +1,6 @@
 [package]
 name = "rs-cor-macros"
-version = "0.2.0"
+version = "0.3.0"
 edition = "2024"
 authors = ["Hayley Dodkins <u21528790@tuks.co.za>"]
 description = "Proc macros for the rs-cor Chain of Responsibility library"
