@@ -8,7 +8,7 @@ Handlers are composed into statically-typed, generic chains with zero dynamic di
 
 ```toml
 [dependencies]
-rs-cor = "0.1.1"
+rs-cor = "0.2.0"
 ```
 
 ## Quick Start
@@ -32,29 +32,47 @@ enum LogLevel {
 #[handler]
 struct InfoHandler<T> {}
 
+impl<N: Handler<LogRequest>> Handler<LogRequest> for InfoHandler<LogRequest, N> {
+    fn handle(&self, request: LogRequest) {
+        if request.level == LogLevel::Info {
+            println!("[INFO] {}", request.message);
+        } else {
+            self.next.handle(request);
+        }
+    }
+}
+
 #[handler]
 struct WarningHandler<T> {}
+
+impl<N: Handler<LogRequest>> Handler<LogRequest> for WarningHandler<LogRequest, N> {
+    fn handle(&self, request: LogRequest) {
+        if request.level == LogLevel::Warning {
+            println!("[WARN] {}", request.message);
+        } else {
+            self.next.handle(request);
+        }
+    }
+}
 
 #[handler]
 struct ErrorHandler<T> {}
 
+impl<N: Handler<LogRequest>> Handler<LogRequest> for ErrorHandler<LogRequest, N> {
+    fn handle(&self, request: LogRequest) {
+        if request.level == LogLevel::Error {
+            println!("[ERROR] {}", request.message);
+        } else {
+            self.next.handle(request);
+        }
+    }
+}
+
 fn main() {
     let logger = chain![
-        |next| InfoHandler::new(
-            |req: &LogRequest| req.level == LogLevel::Info,
-            |req| println!("[INFO] {}", req.message),
-            next,
-        ),
-        |next| WarningHandler::new(
-            |req: &LogRequest| req.level == LogLevel::Warning,
-            |req| println!("[WARN] {}", req.message),
-            next,
-        ),
-        |next| ErrorHandler::new(
-            |req: &LogRequest| req.level == LogLevel::Error,
-            |req| println!("[ERROR] {}", req.message),
-            next,
-        ),
+        |next| InfoHandler::new(next),
+        |next| WarningHandler::new(next),
+        |next| ErrorHandler::new(next),
     ];
 
     logger.handle(LogRequest {
@@ -66,13 +84,12 @@ fn main() {
 
 ## How It Works
 
-The `#[handler]` attribute macro generates a handler struct with:
+The `#[handler]` attribute macro generates the struct scaffolding:
 
-- A `condition: Box<dyn Fn(&T) -> bool>` field that decides whether the handler processes the request
-- An `on_match: Box<dyn Fn(&T)>` field that runs when the condition is true
-- A `next: N` field for the next handler in the chain
-- A `new(condition, on_match, next)` constructor
-- A `Handler<T>` implementation that calls `on_match` when `condition` returns true, otherwise forwards to `next`
+- A `next: N` field and a `_phantom: PhantomData<T>` field
+- A `new(<user fields>, next)` constructor
+
+You then write your own `Handler<T>` implementation to define the routing logic — typically inspecting the request and either handling it or calling `self.next.handle(request)` to forward.
 
 The `chain!` macro composes handler constructors right-to-left, terminating with a `NilHandler` that silently drops unhandled requests. Each entry is a closure receiving the next handler and returning a configured handler.
 
@@ -88,24 +105,38 @@ The `chain!` macro composes handler constructors right-to-left, terminating with
 
 | Macro | Description |
 |-------|-------------|
-| `#[handler]` | Attribute macro that generates a condition-based handler struct |
+| `#[handler]` | Attribute macro that generates handler struct scaffolding (`next` field, constructor) |
 | `#[derive(Handler)]` | Derive macro for pass-through handlers that forward to `next` |
 | `chain!` | Composes handlers into a linked chain |
 
 ## Custom Handler Fields
 
-You can add extra fields to handler structs. The macro preserves them alongside the generated chain machinery:
+You can add extra fields to handler structs. The macro preserves them and includes them as positional arguments to `new` in declaration order, followed by `next`:
 
 ```rust
+use cor::{Handler, handler};
+
 #[handler]
 struct ThresholdHandler<T> {
     pub threshold: u32,
 }
+
+impl<N: Handler<u32>> Handler<u32> for ThresholdHandler<u32, N> {
+    fn handle(&self, request: u32) {
+        if request >= self.threshold {
+            println!("over threshold: {}", request);
+        } else {
+            self.next.handle(request);
+        }
+    }
+}
+
+// Constructed as: ThresholdHandler::new(100, next)
 ```
 
 ## Manual Handler Implementation
 
-For full control, implement the `Handler<T>` trait directly:
+For full control, implement the `Handler<T>` trait directly without the attribute macro:
 
 ```rust
 use cor::Handler;

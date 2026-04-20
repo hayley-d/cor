@@ -8,23 +8,32 @@ This crate provides the `#[handler]` attribute macro and `#[derive(Handler)]` de
 
 ### `#[handler]`
 
-Applied to a struct with a single type parameter `T`. Generates:
+Applied to a struct with a single type parameter `T`. Generates the handler struct scaffolding:
 
 - An additional generic `N: Handler<T>` for the next handler in the chain
-- Fields: `next: N`, `condition: Box<dyn Fn(&T) -> bool>`, `on_match: Box<dyn Fn(&T)>`
-- A `new(condition, on_match, next)` constructor
-- A `Handler<T>` implementation that calls `on_match` when `condition` returns true, otherwise forwards to `next`
+- A `next: N` field and a `_phantom: PhantomData<T>` field
+- A `new(<user fields>, next)` constructor — user-defined fields are preserved and appear as positional arguments before `next`
 
-Any user-defined fields are preserved.
+You then provide the routing logic by writing your own `Handler<T>` implementation.
 
 ```rust
-use cor::{handler, Handler, chain};
+use cor::{Handler, chain, handler};
 
 #[handler]
 struct Logger<T> {}
 
+impl<N: Handler<String>> Handler<String> for Logger<String, N> {
+    fn handle(&self, request: String) {
+        if !request.is_empty() {
+            println!("{}", request);
+        } else {
+            self.next.handle(request);
+        }
+    }
+}
+
 let chain = chain![
-    |next| Logger::new(|req: &String| !req.is_empty(), |req| println!("{}", req), next),
+    |next| Logger::new(next),
 ];
 ```
 

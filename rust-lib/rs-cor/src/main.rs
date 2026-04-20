@@ -16,29 +16,47 @@ enum LogLevel {
 #[handler]
 struct InfoHandler<T> {}
 
+impl<N: Handler<LogRequest>> Handler<LogRequest> for InfoHandler<LogRequest, N> {
+    fn handle(&self, request: LogRequest) {
+        if request.level == LogLevel::Info {
+            println!("[INFO] {}", request.message);
+        } else {
+            self.next.handle(request);
+        }
+    }
+}
+
 #[handler]
 struct WarningHandler<T> {}
+
+impl<N: Handler<LogRequest>> Handler<LogRequest> for WarningHandler<LogRequest, N> {
+    fn handle(&self, request: LogRequest) {
+        if request.level == LogLevel::Warning {
+            println!("[WARN] {}", request.message);
+        } else {
+            self.next.handle(request);
+        }
+    }
+}
 
 #[handler]
 struct ErrorHandler<T> {}
 
+impl<N: Handler<LogRequest>> Handler<LogRequest> for ErrorHandler<LogRequest, N> {
+    fn handle(&self, request: LogRequest) {
+        if request.level == LogLevel::Error {
+            println!("[ERROR] {}", request.message);
+        } else {
+            self.next.handle(request);
+        }
+    }
+}
+
 fn main() {
     let logger = chain![
-        |next| InfoHandler::new(
-            |req: &LogRequest| req.level == LogLevel::Info,
-            |req| println!("[INFO] {}", req.message),
-            next,
-        ),
-        |next| WarningHandler::new(
-            |req: &LogRequest| req.level == LogLevel::Warning,
-            |req| println!("[WARN] {}", req.message),
-            next,
-        ),
-        |next| ErrorHandler::new(
-            |req: &LogRequest| req.level == LogLevel::Error,
-            |req| println!("[ERROR] {}", req.message),
-            next,
-        ),
+        |next| InfoHandler::new(next),
+        |next| WarningHandler::new(next),
+        |next| ErrorHandler::new(next),
     ];
 
     logger.handle(LogRequest {

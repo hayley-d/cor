@@ -13,68 +13,78 @@
 //!
 //! #[derive(Clone)]
 //! struct LogRequest {
-//!    level: LogLevel,
-//!    message: String,
+//!     level: LogLevel,
+//!     message: String,
 //! }
-
+//!
 //! #[derive(Clone, PartialEq)]
 //! enum LogLevel {
-//!   Info,
-//!   Warning,
-//!   Error,
+//!     Info,
+//!     Warning,
+//!     Error,
 //! }
 //!
 //! #[handler]
 //! struct InfoHandler<T> {}
 //!
+//! impl<N: Handler<LogRequest>> Handler<LogRequest> for InfoHandler<LogRequest, N> {
+//!     fn handle(&self, request: LogRequest) {
+//!         if request.level == LogLevel::Info {
+//!             println!("[INFO] {}", request.message);
+//!         } else {
+//!             self.next.handle(request);
+//!         }
+//!     }
+//! }
+//!
 //! #[handler]
 //! struct WarningHandler<T> {}
+//!
+//! impl<N: Handler<LogRequest>> Handler<LogRequest> for WarningHandler<LogRequest, N> {
+//!     fn handle(&self, request: LogRequest) {
+//!         if request.level == LogLevel::Warning {
+//!             println!("[WARN] {}", request.message);
+//!         } else {
+//!             self.next.handle(request);
+//!         }
+//!     }
+//! }
 //!
 //! #[handler]
 //! struct ErrorHandler<T> {}
 //!
-//! fn main() {
-//!   let logger = chain![
-//!       |next| InfoHandler::new(
-//!           |req: &LogRequest| req.level == LogLevel::Info,
-//!           |req| println!("[INFO] {}", req.message),
-//!           next,
-//!       ),
-//!       |next| WarningHandler::new(
-//!           |req: &LogRequest| req.level == LogLevel::Warning,
-//!           |req| println!("[WARN] {}", req.message),
-//!           next,
-//!       ),
-//!       |next| ErrorHandler::new(
-//!           |req: &LogRequest| req.level == LogLevel::Error,
-//!           |req| println!("[ERROR] {}", req.message),
-//!           next,
-//!       ),
-//!   ];
-//!
-//!   logger.handle(LogRequest {
-//!       level: LogLevel::Info,
-//!       message: "Server started on port 8080".into(),
-//!   });
-//!
-//!   logger.handle(LogRequest {
-//!       level: LogLevel::Warning,
-//!       message: "Memory usage above 80%".into(),
-//!   });
-//!
-//!   logger.handle(LogRequest {
-//!       level: LogLevel::Error,
-//!       message: "Database connection lost".into(),
-//!   });
+//! impl<N: Handler<LogRequest>> Handler<LogRequest> for ErrorHandler<LogRequest, N> {
+//!     fn handle(&self, request: LogRequest) {
+//!         if request.level == LogLevel::Error {
+//!             println!("[ERROR] {}", request.message);
+//!         } else {
+//!             self.next.handle(request);
+//!         }
+//!     }
 //! }
+//!
+//! let logger = chain![
+//!     |next| InfoHandler::new(next),
+//!     |next| WarningHandler::new(next),
+//!     |next| ErrorHandler::new(next),
+//! ];
+//!
+//! logger.handle(LogRequest {
+//!     level: LogLevel::Info,
+//!     message: "Server started on port 8080".into(),
+//! });
 //! ```
 //!
 //! # How it works
 //!
+//! The [`#[handler]`](macro@handler) attribute macro generates a struct with a
+//! `next` field and a `new(next)` constructor. You provide the routing logic by
+//! writing your own [`Handler<T>`] implementation.
+//!
 //! The [`chain!`] macro composes handler constructors right-to-left, terminating
-//! with a [`NilHandler`] that silently drops unhandled requests. Each entry in
-//! the macro is a closure that receives the next handler and returns a configured
-//! handler, producing a fully nested type at compile time.
+//! with a [`NilHandler`] that silently drops unhandled requests. Each entry is a
+//! closure that receives the next handler and returns a configured handler,
+//! producing a fully nested type at compile time.
 
 extern crate self as cor;
 
@@ -82,9 +92,11 @@ pub use macros_lib::{Handler, handler};
 
 /// The core trait for all handlers in the chain.
 ///
-/// Implement this trait to define custom handler behavior. For most use cases
-/// the [`#[handler]`](macro@handler) attribute macro or [`#[derive(Handler)]`](derive@Handler)
-/// will generate the implementation for you.
+/// Implement this trait to define custom handler behavior. The
+/// [`#[handler]`](macro@handler) attribute macro generates the struct scaffolding
+/// (fields and constructor) for you, leaving you to write only the `handle`
+/// method. For a pass-through handler, [`#[derive(Handler)]`](derive@Handler)
+/// generates the implementation.
 ///
 /// # Examples
 ///
@@ -144,18 +156,12 @@ impl<T> Handler<T> for NilHandler {
 /// let base: BaseHandler<String, NilHandler> = BaseHandler::new(NilHandler::new());
 /// base.handle("forwarded to NilHandler".to_string());
 /// ```
-#[derive(Handler)]
-pub struct BaseHandler<T, N: Handler<T>> {
-    pub next: N,
-    _phantom: std::marker::PhantomData<T>,
-}
+#[handler]
+pub struct BaseHandler<T, N: Handler<T>> {}
 
-impl<T, N: Handler<T>> BaseHandler<T, N> {
-    pub fn new(next: N) -> Self {
-        BaseHandler {
-            next,
-            _phantom: std::marker::PhantomData,
-        }
+impl<T, N: Handler<T>> Handler<T> for BaseHandler<T, N> {
+    fn handle(&self, request: T) {
+        self.next.handle(request);
     }
 }
 
@@ -187,8 +193,14 @@ impl Default for NilHandler {
 /// #[handler]
 /// struct Echo<T> {}
 ///
+/// impl<N: Handler<String>> Handler<String> for Echo<String, N> {
+///     fn handle(&self, request: String) {
+///         println!("{}", request);
+///     }
+/// }
+///
 /// let c = chain![
-///     |next| Echo::new(|_: &String| true, |req| println!("{}", req), next),
+///     |next| Echo::new(next),
 /// ];
 /// c.handle("test".to_string());
 /// ```
@@ -201,12 +213,32 @@ impl Default for NilHandler {
 /// #[handler]
 /// struct First<T> {}
 ///
+/// impl<N: Handler<i32>> Handler<i32> for First<i32, N> {
+///     fn handle(&self, request: i32) {
+///         if request == 1 {
+///             println!("first: {}", request);
+///         } else {
+///             self.next.handle(request);
+///         }
+///     }
+/// }
+///
 /// #[handler]
 /// struct Second<T> {}
 ///
+/// impl<N: Handler<i32>> Handler<i32> for Second<i32, N> {
+///     fn handle(&self, request: i32) {
+///         if request == 2 {
+///             println!("second: {}", request);
+///         } else {
+///             self.next.handle(request);
+///         }
+///     }
+/// }
+///
 /// let c = chain![
-///     |next| First::new(|req: &i32| *req == 1, |req| println!("first: {}", req), next),
-///     |next| Second::new(|req: &i32| *req == 2, |req| println!("second: {}", req), next),
+///     |next| First::new(next),
+///     |next| Second::new(next),
 /// ];
 /// c.handle(2);
 /// ```
@@ -228,7 +260,23 @@ mod tests {
     use std::rc::Rc;
 
     #[handler]
-    struct TestHandler<T> {}
+    struct Recorder<T> {
+        log: Rc<RefCell<Vec<String>>>,
+        tag: &'static str,
+        matches: fn(&String) -> bool,
+    }
+
+    impl<N: Handler<String>> Handler<String> for Recorder<String, N> {
+        fn handle(&self, request: String) {
+            if (self.matches)(&request) {
+                self.log
+                    .borrow_mut()
+                    .push(format!("{}:{}", self.tag, request));
+            } else {
+                self.next.handle(request);
+            }
+        }
+    }
 
     #[test]
     fn nil_handler_accepts_any_request() {
@@ -241,49 +289,33 @@ mod tests {
     #[test]
     fn base_handler_forwards_to_next() {
         let log = Rc::new(RefCell::new(Vec::new()));
-        let log_clone = log.clone();
 
-        let chain = chain![
-            |next| BaseHandler {
-                next,
-                _phantom: std::marker::PhantomData::<String>,
-            },
-            |next| TestHandler::new(
-                |_: &String| true,
-                move |req| log_clone.borrow_mut().push(req.clone()),
-                next,
-            ),
-        ];
+        let chain = chain![|next| BaseHandler::new(next), |next| Recorder::new(
+            log.clone(),
+            "r",
+            |_| true,
+            next
+        ),];
 
         chain.handle("hello".to_string());
-        assert_eq!(*log.borrow(), vec!["hello"]);
+        assert_eq!(*log.borrow(), vec!["r:hello"]);
     }
 
     #[test]
     fn single_handler_chain_matches() {
         let log = Rc::new(RefCell::new(Vec::new()));
-        let log_clone = log.clone();
 
-        let chain = chain![|next| TestHandler::new(
-            |req: &String| req == "match",
-            move |req| log_clone.borrow_mut().push(req.clone()),
-            next,
-        ),];
+        let chain = chain![|next| Recorder::new(log.clone(), "r", |req| req == "match", next),];
 
         chain.handle("match".to_string());
-        assert_eq!(*log.borrow(), vec!["match"]);
+        assert_eq!(*log.borrow(), vec!["r:match"]);
     }
 
     #[test]
     fn single_handler_chain_falls_through() {
         let log = Rc::new(RefCell::new(Vec::new()));
-        let log_clone = log.clone();
 
-        let chain = chain![|next| TestHandler::new(
-            |req: &String| req == "match",
-            move |req| log_clone.borrow_mut().push(req.clone()),
-            next,
-        ),];
+        let chain = chain![|next| Recorder::new(log.clone(), "r", |req| req == "match", next),];
 
         chain.handle("no match".to_string());
         assert!(log.borrow().is_empty());
@@ -292,26 +324,10 @@ mod tests {
     #[test]
     fn multi_handler_chain_routes_correctly() {
         let log = Rc::new(RefCell::new(Vec::new()));
-        let log_a = log.clone();
-        let log_b = log.clone();
-
-        #[handler]
-        struct HandlerA<T> {}
-
-        #[handler]
-        struct HandlerB<T> {}
 
         let chain = chain![
-            |next| HandlerA::new(
-                |req: &String| req == "A",
-                move |req| log_a.borrow_mut().push(format!("A:{}", req)),
-                next,
-            ),
-            |next| HandlerB::new(
-                |req: &String| req == "B",
-                move |req| log_b.borrow_mut().push(format!("B:{}", req)),
-                next,
-            ),
+            |next| Recorder::new(log.clone(), "A", |req| req == "A", next),
+            |next| Recorder::new(log.clone(), "B", |req| req == "B", next),
         ];
 
         chain.handle("B".to_string());
@@ -322,26 +338,10 @@ mod tests {
     #[test]
     fn unmatched_request_falls_through_entire_chain() {
         let log = Rc::new(RefCell::new(Vec::new()));
-        let log_a = log.clone();
-        let log_b = log.clone();
-
-        #[handler]
-        struct HandlerA<T> {}
-
-        #[handler]
-        struct HandlerB<T> {}
 
         let chain = chain![
-            |next| HandlerA::new(
-                |req: &String| req == "A",
-                move |req| log_a.borrow_mut().push(req.clone()),
-                next,
-            ),
-            |next| HandlerB::new(
-                |req: &String| req == "B",
-                move |req| log_b.borrow_mut().push(req.clone()),
-                next,
-            ),
+            |next| Recorder::new(log.clone(), "A", |req| req == "A", next),
+            |next| Recorder::new(log.clone(), "B", |req| req == "B", next),
         ];
 
         chain.handle("C".to_string());
@@ -351,47 +351,13 @@ mod tests {
     #[test]
     fn first_matching_handler_wins() {
         let log = Rc::new(RefCell::new(Vec::new()));
-        let log_first = log.clone();
-        let log_second = log.clone();
-
-        #[handler]
-        struct First<T> {}
-
-        #[handler]
-        struct Second<T> {}
 
         let chain = chain![
-            |next| First::new(
-                |_: &String| true,
-                move |req| log_first.borrow_mut().push(format!("first:{}", req)),
-                next,
-            ),
-            |next| Second::new(
-                |_: &String| true,
-                move |req| log_second.borrow_mut().push(format!("second:{}", req)),
-                next,
-            ),
+            |next| Recorder::new(log.clone(), "first", |_| true, next),
+            |next| Recorder::new(log.clone(), "second", |_| true, next),
         ];
 
         chain.handle("x".to_string());
         assert_eq!(*log.borrow(), vec!["first:x"]);
-    }
-
-    #[test]
-    fn works_with_non_string_types() {
-        let log = Rc::new(RefCell::new(Vec::new()));
-        let log_clone = log.clone();
-
-        let chain = chain![|next| TestHandler::new(
-            |req: &i32| *req > 10,
-            move |req| log_clone.borrow_mut().push(*req),
-            next,
-        ),];
-
-        chain.handle(5);
-        assert!(log.borrow().is_empty());
-
-        chain.handle(42);
-        assert_eq!(*log.borrow(), vec![42]);
     }
 }

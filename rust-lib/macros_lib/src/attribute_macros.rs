@@ -24,42 +24,35 @@ pub fn handler_attr_impl(_attr: TokenStream, item: TokenStream) -> TokenStream {
         _ => panic!("handler attribute only works on structs"),
     };
 
-    // Filter out `next` field if user included it (macro manages it)
     let existing_field_tokens: Vec<_> = existing_fields
         .iter()
-        .filter(|f| f.ident.as_ref().map_or(true, |id| id != "next"))
-        .map(|f| quote! { #f })
+        .filter(|field| field.ident.as_ref().map_or(true, |id| id != "next"))
+        .map(|field| quote! { #field })
+        .collect();
+
+    let field_names: Vec<_> = existing_fields
+        .iter()
+        .filter(|field| field.ident.as_ref().map_or(true, |id| id != "next"))
+        .map(|field| &field.ident)
         .collect();
 
     let expanded = quote! {
         #(#attributes)*
         #visibility struct #name<#type_t, N: ::cor::Handler<#type_t>> {
             #(#existing_field_tokens,)*
-            next: N,
-            condition: Box<dyn Fn(&#type_t) -> bool>,
-            on_match: Box<dyn Fn(&#type_t)>,
+            pub next: N,
+            _phantom: ::std::marker::PhantomData<#type_t>,
         }
 
         impl<#type_t, N: ::cor::Handler<#type_t>> #name<#type_t, N> {
             pub fn new(
-                condition: impl Fn(&#type_t) -> bool + 'static,
-                on_match: impl Fn(&#type_t) + 'static,
+                #(#existing_field_tokens,)*
                 next: N,
             ) -> Self {
                 Self {
+                    #(#field_names,)*
                     next,
-                    condition: Box::new(condition),
-                    on_match: Box::new(on_match),
-                }
-            }
-        }
-
-        impl<#type_t, N: ::cor::Handler<#type_t>> ::cor::Handler<#type_t> for #name<#type_t, N> {
-            fn handle(&self, request: #type_t) {
-                if (self.condition)(&request) {
-                    (self.on_match)(&request);
-                } else {
-                    self.next.handle(request);
+                    _phantom: ::std::marker::PhantomData,
                 }
             }
         }
