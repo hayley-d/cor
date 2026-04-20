@@ -1,4 +1,4 @@
-use cor::{Handler, chain, handler};
+use cor::{Handler, NilHandler, chain, handler};
 
 #[derive(Clone)]
 struct LogRequest {
@@ -53,11 +53,8 @@ impl<N: Handler<LogRequest>> Handler<LogRequest> for ErrorHandler<LogRequest, N>
 }
 
 fn main() {
-    let logger = chain![
-        |next| InfoHandler::new(next),
-        |next| WarningHandler::new(next),
-        |next| ErrorHandler::new(next),
-    ];
+    let base_handler = NilHandler::new();
+    let logger = chain![InfoHandler, WarningHandler, ErrorHandler];
 
     logger.handle(LogRequest {
         level: LogLevel::Info,

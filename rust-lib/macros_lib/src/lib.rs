@@ -1,4 +1,6 @@
 use proc_macro::TokenStream;
+use quote::quote;
+use syn::{Token, Type, parse_macro_input, punctuated::Punctuated};
 
 mod attribute_macros;
 mod derive_macros;
@@ -21,6 +23,66 @@ mod derive_macros;
 #[proc_macro_derive(Handler)]
 pub fn handler_derive(input: TokenStream) -> TokenStream {
     derive_macros::handler_derive_impl(input)
+}
+
+struct HandlerList {
+    handlers: Vec<Type>,
+}
+
+impl syn::parse::Parse for HandlerList {
+    fn parse(input: syn::parse::ParseStream) -> syn::Result<Self> {
+        let list = Punctuated::<Type, Token![,]>::parse_terminated(input)?;
+
+        Ok(HandlerList {
+            handlers: list.into_iter().collect(),
+        })
+    }
+}
+
+/// Compose handler types into a nested chain.
+///
+/// Each argument is a handler type whose `new(next)` constructor takes the
+/// next handler as its final argument. The macro nests them right-to-left,
+/// terminating with the local variable `base_handler`, which must be in
+/// scope at the call site.
+///
+/// # Example
+///
+/// ```ignore
+/// use cor::{Handler, NilHandler, chain, handler};
+///
+/// #[handler]
+/// struct Echo<T> {}
+///
+/// impl<N: Handler<String>> Handler<String> for Echo<String, N> {
+///     fn handle(&self, request: String) {
+///         println!("{}", request);
+///     }
+/// }
+///
+/// let base_handler = NilHandler::new();
+/// let chain = chain![Echo];
+/// chain.handle("hello".to_string());
+/// ```
+#[proc_macro]
+pub fn chain(input: TokenStream) -> TokenStream {
+    let input = parse_macro_input!(input as HandlerList);
+    let handlers = input.handlers;
+
+    let expanded = if handlers.is_empty() {
+        quote! { base_handler }
+    } else {
+        handlers
+            .iter()
+            .rev()
+            .fold(quote! { ::cor::NilHandler::new() }, |acc, handler| {
+                quote! {
+                    #handler::new(#acc)
+                }
+            })
+    };
+
+    TokenStream::from(expanded)
 }
 
 /// Generate the scaffolding for a chain-of-responsibility handler struct.

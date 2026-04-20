@@ -9,7 +9,7 @@
 //! # Quick start
 //!
 //! ```
-//! use cor::{Handler, chain, handler};
+//! use cor::{Handler, NilHandler, chain, handler};
 //!
 //! #[derive(Clone)]
 //! struct LogRequest {
@@ -63,11 +63,8 @@
 //!     }
 //! }
 //!
-//! let logger = chain![
-//!     |next| InfoHandler::new(next),
-//!     |next| WarningHandler::new(next),
-//!     |next| ErrorHandler::new(next),
-//! ];
+//! let base_handler = NilHandler::new();
+//! let logger = chain![InfoHandler, WarningHandler, ErrorHandler];
 //!
 //! logger.handle(LogRequest {
 //!     level: LogLevel::Info,
@@ -81,14 +78,14 @@
 //! `next` field and a `new(next)` constructor. You provide the routing logic by
 //! writing your own [`Handler<T>`] implementation.
 //!
-//! The [`chain!`] macro composes handler constructors right-to-left, terminating
-//! with a [`NilHandler`] that silently drops unhandled requests. Each entry is a
-//! closure that receives the next handler and returns a configured handler,
-//! producing a fully nested type at compile time.
+//! The [`chain!`] macro composes handler types right-to-left, terminating with a
+//! `base_handler` variable (typically a [`NilHandler`]) that the caller brings
+//! into scope. Each entry is a handler type whose `new` takes the next handler
+//! as its final argument, producing a fully nested type at compile time.
 
 extern crate self as cor;
 
-pub use macros_lib::{Handler, handler};
+pub use macros_lib::{Handler, chain, handler};
 
 /// The core trait for all handlers in the chain.
 ///
@@ -126,8 +123,8 @@ pub trait Handler<T> {
 
 /// A terminal handler that discards any request it receives.
 ///
-/// `NilHandler` is automatically placed at the end of every chain built by
-/// the [`chain!`] macro. You typically don't need to use it directly.
+/// `NilHandler` is the conventional tail of a chain: bind it to a local
+/// `base_handler` and the [`chain!`] macro will nest handlers on top of it.
 ///
 /// # Examples
 ///
@@ -177,82 +174,6 @@ impl Default for NilHandler {
     }
 }
 
-/// Compose handlers into a chain.
-///
-/// Each argument is a closure `|next| -> impl Handler<T>` that receives the
-/// next handler in the chain and returns a configured handler. The macro nests
-/// them right-to-left, with a [`NilHandler`] at the tail.
-///
-/// # Examples
-///
-/// Single handler:
-///
-/// ```
-/// use cor::{Handler, chain, handler};
-///
-/// #[handler]
-/// struct Echo<T> {}
-///
-/// impl<N: Handler<String>> Handler<String> for Echo<String, N> {
-///     fn handle(&self, request: String) {
-///         println!("{}", request);
-///     }
-/// }
-///
-/// let c = chain![
-///     |next| Echo::new(next),
-/// ];
-/// c.handle("test".to_string());
-/// ```
-///
-/// Multiple handlers (evaluated left-to-right):
-///
-/// ```
-/// use cor::{Handler, chain, handler};
-///
-/// #[handler]
-/// struct First<T> {}
-///
-/// impl<N: Handler<i32>> Handler<i32> for First<i32, N> {
-///     fn handle(&self, request: i32) {
-///         if request == 1 {
-///             println!("first: {}", request);
-///         } else {
-///             self.next.handle(request);
-///         }
-///     }
-/// }
-///
-/// #[handler]
-/// struct Second<T> {}
-///
-/// impl<N: Handler<i32>> Handler<i32> for Second<i32, N> {
-///     fn handle(&self, request: i32) {
-///         if request == 2 {
-///             println!("second: {}", request);
-///         } else {
-///             self.next.handle(request);
-///         }
-///     }
-/// }
-///
-/// let c = chain![
-///     |next| First::new(next),
-///     |next| Second::new(next),
-/// ];
-/// c.handle(2);
-/// ```
-#[macro_export]
-macro_rules! chain {
-    ($last:expr $(,)?) => {
-        $last(::cor::NilHandler::new())
-    };
-
-    ($head:expr, $($rest:expr),+ $(,)?) => {{
-        $head(chain!($($rest),+))
-    }};
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -287,15 +208,22 @@ mod tests {
     }
 
     #[test]
+    fn chain_macro_composes_handler_types() {
+        let base_handler: NilHandler = NilHandler::new();
+        let chain = chain![BaseHandler, BaseHandler];
+        chain.handle("hello".to_string());
+    }
+
+    #[test]
     fn base_handler_forwards_to_next() {
         let log = Rc::new(RefCell::new(Vec::new()));
 
-        let chain = chain![|next| BaseHandler::new(next), |next| Recorder::new(
+        let chain = BaseHandler::new(Recorder::new(
             log.clone(),
             "r",
             |_| true,
-            next
-        ),];
+            NilHandler::new(),
+        ));
 
         chain.handle("hello".to_string());
         assert_eq!(*log.borrow(), vec!["r:hello"]);
@@ -305,7 +233,7 @@ mod tests {
     fn single_handler_chain_matches() {
         let log = Rc::new(RefCell::new(Vec::new()));
 
-        let chain = chain![|next| Recorder::new(log.clone(), "r", |req| req == "match", next),];
+        let chain = Recorder::new(log.clone(), "r", |req| req == "match", NilHandler::new());
 
         chain.handle("match".to_string());
         assert_eq!(*log.borrow(), vec!["r:match"]);
@@ -315,7 +243,7 @@ mod tests {
     fn single_handler_chain_falls_through() {
         let log = Rc::new(RefCell::new(Vec::new()));
 
-        let chain = chain![|next| Recorder::new(log.clone(), "r", |req| req == "match", next),];
+        let chain = Recorder::new(log.clone(), "r", |req| req == "match", NilHandler::new());
 
         chain.handle("no match".to_string());
         assert!(log.borrow().is_empty());
@@ -325,10 +253,12 @@ mod tests {
     fn multi_handler_chain_routes_correctly() {
         let log = Rc::new(RefCell::new(Vec::new()));
 
-        let chain = chain![
-            |next| Recorder::new(log.clone(), "A", |req| req == "A", next),
-            |next| Recorder::new(log.clone(), "B", |req| req == "B", next),
-        ];
+        let chain = Recorder::new(
+            log.clone(),
+            "A",
+            |req| req == "A",
+            Recorder::new(log.clone(), "B", |req| req == "B", NilHandler::new()),
+        );
 
         chain.handle("B".to_string());
         chain.handle("A".to_string());
@@ -339,10 +269,12 @@ mod tests {
     fn unmatched_request_falls_through_entire_chain() {
         let log = Rc::new(RefCell::new(Vec::new()));
 
-        let chain = chain![
-            |next| Recorder::new(log.clone(), "A", |req| req == "A", next),
-            |next| Recorder::new(log.clone(), "B", |req| req == "B", next),
-        ];
+        let chain = Recorder::new(
+            log.clone(),
+            "A",
+            |req| req == "A",
+            Recorder::new(log.clone(), "B", |req| req == "B", NilHandler::new()),
+        );
 
         chain.handle("C".to_string());
         assert!(log.borrow().is_empty());
@@ -352,10 +284,12 @@ mod tests {
     fn first_matching_handler_wins() {
         let log = Rc::new(RefCell::new(Vec::new()));
 
-        let chain = chain![
-            |next| Recorder::new(log.clone(), "first", |_| true, next),
-            |next| Recorder::new(log.clone(), "second", |_| true, next),
-        ];
+        let chain = Recorder::new(
+            log.clone(),
+            "first",
+            |_| true,
+            Recorder::new(log.clone(), "second", |_| true, NilHandler::new()),
+        );
 
         chain.handle("x".to_string());
         assert_eq!(*log.borrow(), vec!["first:x"]);
