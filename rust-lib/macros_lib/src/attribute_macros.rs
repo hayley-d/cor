@@ -37,26 +37,43 @@ pub fn handler_attr_impl(_attr: TokenStream, item: TokenStream) -> TokenStream {
         .collect();
 
     let expanded = quote! {
-        #(#attributes)*
-        #visibility struct #name<#type_t, N: ::cor::Handler<#type_t>> {
-            #(#existing_field_tokens,)*
-            pub next: N,
-            _phantom: ::std::marker::PhantomData<#type_t>,
-        }
-
-        impl<#type_t, N: ::cor::Handler<#type_t>> #name<#type_t, N> {
-            pub fn new(
+            #(#attributes)*
+            #visibility struct #name<#type_t, N: ::cor::Handler<#type_t>> {
                 #(#existing_field_tokens,)*
-                next: N,
-            ) -> Self {
-                Self {
-                    #(#field_names,)*
-                    next,
-                    _phantom: ::std::marker::PhantomData,
+                pub next: N,
+                _phantom: ::std::marker::PhantomData<#type_t>,
+            }
+
+            impl<#type_t, N: ::cor::Handler<#type_t>> #name<#type_t, N> {
+                pub fn new(
+                    #(#existing_field_tokens,)*
+                    next: N,
+                ) -> Self {
+                    Self {
+                        #(#field_names,)*
+                        next,
+                        _phantom: ::std::marker::PhantomData,
+                    }
                 }
             }
+
+    impl<#type_t, N> ::cor::Linker<#type_t, N> for #name<#type_t, N>
+    where
+        N: ::cor::Handler<#type_t> + ::cor::Linker<#type_t, N>,
+        <N as ::cor::Linker<#type_t, N>>::Output: ::cor::Handler<#type_t>,
+        #name<#type_t, <N as ::cor::Linker<#type_t, N>>::Output>: ::cor::Handler<#type_t>,
+    {
+        type Output = #name<#type_t, <N as ::cor::Linker<#type_t, N>>::Output>;
+
+        fn append(self, new_handler: N) -> Self::Output {
+            #name {
+                #(#field_names: self.#field_names,)*
+                next: self.next.append(new_handler),
+                _phantom: ::std::marker::PhantomData,
+            }
         }
-    };
+    }
+        };
 
     expanded.into()
 }

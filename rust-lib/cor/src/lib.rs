@@ -22,6 +22,7 @@
 //!     Info,
 //!     Warning,
 //!     Error,
+//!     Log
 //! }
 //!
 //! #[handler]
@@ -53,7 +54,8 @@
 //! #[handler]
 //! struct ErrorHandler<T> {}
 //!
-//! impl<N: Handler<LogRequest>> Handler<LogRequest> for ErrorHandler<LogRequest, N> {
+//! impl<N: Handler<LogRequest>> Handler<LogRequest> for ErrorHandler<LogRequest, N>
+//! {
 //!     fn handle(&self, request: LogRequest) {
 //!         if request.level == LogLevel::Error {
 //!             println!("[ERROR] {}", request.message);
@@ -63,11 +65,35 @@
 //!     }
 //! }
 //!
+//! #[handler]
+//! struct LogHandler<T> {}
+//!
+//! impl<LogRequest, N> Handler<LogRequest> for InfoHandler<LogRequest, N>
+//! where
+//!   N: Handler<LogRequest>,
+//! {
+//!   fn handle(&self, request: LogRequest) {
+//!       if request.level == LogLevel::Log {
+//!             println!("[LOG] {}", request.message);
+//!         } else {
+//!             self.next.handle(request);
+//!         }
+//!   }
+//! }
+//!
 //! let base_handler = NilHandler::new();
 //! let logger = chain![InfoHandler, WarningHandler, ErrorHandler];
 //!
 //! logger.handle(LogRequest {
 //!     level: LogLevel::Info,
+//!     message: "Server started on port 8080".into(),
+//! };
+
+//!
+//! let extended_chain = append_chain![LogHandler; logger];
+//!
+//! extended_chain.handle(LogRequest {
+//!     level: LogLevel::Log,
 //!     message: "Server started on port 8080".into(),
 //! });
 //! ```
@@ -121,6 +147,11 @@ pub trait Handler<T> {
     fn handle(&self, request: T);
 }
 
+pub trait Linker<T, N: Handler<T>> {
+    type Output: Handler<T>;
+    fn append(self, new_handler: N) -> Self::Output;
+}
+
 /// A terminal handler that discards any request it receives.
 ///
 /// `NilHandler` is the conventional tail of a chain: bind it to a local
@@ -138,6 +169,14 @@ pub struct NilHandler;
 
 impl<T> Handler<T> for NilHandler {
     fn handle(&self, _: T) {}
+}
+
+impl<T, N: Handler<T>> Linker<T, N> for NilHandler {
+    type Output = N;
+
+    fn append(self, new_handler: N) -> Self::Output {
+        new_handler
+    }
 }
 
 /// A pass-through handler that forwards every request to the next handler.
@@ -218,12 +257,7 @@ mod tests {
     fn base_handler_forwards_to_next() {
         let log = Rc::new(RefCell::new(Vec::new()));
 
-        let chain = BaseHandler::new(Recorder::new(
-            log.clone(),
-            "r",
-            |_| true,
-            NilHandler::new(),
-        ));
+        let chain = BaseHandler::new(Recorder::new(log.clone(), "r", |_| true, NilHandler::new()));
 
         chain.handle("hello".to_string());
         assert_eq!(*log.borrow(), vec!["r:hello"]);

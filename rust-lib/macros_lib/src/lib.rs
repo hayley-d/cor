@@ -1,6 +1,6 @@
 use proc_macro::TokenStream;
 use quote::quote;
-use syn::{Token, Type, parse_macro_input, punctuated::Punctuated};
+use syn::{Expr, Token, Type, parse_macro_input, punctuated::Punctuated};
 
 mod attribute_macros;
 mod derive_macros;
@@ -78,6 +78,48 @@ pub fn chain(input: TokenStream) -> TokenStream {
             .fold(quote! { ::cor::NilHandler::new() }, |acc, handler| {
                 quote! {
                     #handler::new(#acc)
+                }
+            })
+    };
+
+    TokenStream::from(expanded)
+}
+
+struct AppendInput {
+    new_handlers: Vec<Type>,
+    existing_chain: Expr,
+}
+
+impl syn::parse::Parse for AppendInput {
+    fn parse(input: syn::parse::ParseStream) -> syn::Result<Self> {
+        let handlers = Punctuated::<Type, Token![,]>::parse_separated_nonempty(input)?;
+
+        input.parse::<Token![;]>()?;
+
+        let chain = input.parse::<Expr>()?;
+
+        Ok(AppendInput {
+            new_handlers: handlers.into_iter().collect(),
+            existing_chain: chain,
+        })
+    }
+}
+
+#[proc_macro]
+pub fn append_chain(input: TokenStream) -> TokenStream {
+    let input = parse_macro_input!(input as AppendInput);
+
+    let existing_chain = &input.existing_chain;
+    let handlers = &input.new_handlers;
+
+    let expanded = if handlers.is_empty() {
+        quote! { #existing_chain }
+    } else {
+        handlers
+            .iter()
+            .fold(quote! { #existing_chain }, |acc, handler| {
+                quote! {
+                    #acc.append(#handler::new(::cor::NilHandler))
                 }
             })
     };
