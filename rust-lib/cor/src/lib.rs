@@ -9,7 +9,7 @@
 //! # Quick start
 //!
 //! ```
-//! use cor::{Handler, NilHandler, chain, handler};
+//! use cor::{Handler, NilHandler, chain, append_chain, handler};
 //!
 //! #[derive(Clone)]
 //! struct LogRequest {
@@ -68,17 +68,14 @@
 //! #[handler]
 //! struct LogHandler<T> {}
 //!
-//! impl<LogRequest, N> Handler<LogRequest> for InfoHandler<LogRequest, N>
-//! where
-//!   N: Handler<LogRequest>,
-//! {
-//!   fn handle(&self, request: LogRequest) {
-//!       if request.level == LogLevel::Log {
+//! impl<N: Handler<LogRequest>> Handler<LogRequest> for LogHandler<LogRequest, N> {
+//!     fn handle(&self, request: LogRequest) {
+//!         if request.level == LogLevel::Log {
 //!             println!("[LOG] {}", request.message);
 //!         } else {
 //!             self.next.handle(request);
 //!         }
-//!   }
+//!     }
 //! }
 //!
 //! let base_handler = NilHandler::new();
@@ -87,8 +84,7 @@
 //! logger.handle(LogRequest {
 //!     level: LogLevel::Info,
 //!     message: "Server started on port 8080".into(),
-//! };
-
+//! });
 //!
 //! let extended_chain = append_chain![LogHandler; logger];
 //!
@@ -111,7 +107,7 @@
 
 extern crate self as cor;
 
-pub use macros_lib::{Handler, chain, handler};
+pub use macros_lib::{Handler, append_chain, chain, handler};
 
 /// The core trait for all handlers in the chain.
 ///
